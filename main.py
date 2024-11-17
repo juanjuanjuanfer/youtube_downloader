@@ -178,7 +178,6 @@ def main():
                         st.success('Download completed!')
                     else:
                         st.error('Download failed. Please try again.')
-
     # Show download link if file is ready
     if st.session_state.downloaded_file and os.path.exists(st.session_state.downloaded_file):
         st.write("---")
@@ -189,7 +188,7 @@ def main():
         
         with open(st.session_state.downloaded_file, 'rb') as file:
             st.download_button(
-                label="Save on Device",
+                label="Download Video",
                 data=file,
                 file_name=os.path.basename(st.session_state.downloaded_file),
                 mime='video/mp4'
