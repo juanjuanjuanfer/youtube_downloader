@@ -47,18 +47,36 @@ def get_video_info(url):
         st.error(f"Error fetching video info: {str(e)}")
         return None
 
-def download_video(url, temp_dir, height, format_option='mp4'):
+def download_video(url, temp_dir, height, format_option='mp4', progress_bar=None, progress_text=None):
     """
-    Download a video from YouTube using yt-dlp
+    Download a video from YouTube using yt-dlp with progress tracking
     
     Args:
         url (str): YouTube video URL
         temp_dir (str): Temporary directory to save the video
         height (int): Desired video height (quality)
         format_option (str): Desired video format
+        progress_bar: Streamlit progress bar component
+        progress_text: Streamlit text component for status updates
     """
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            # Calculate download progress
+            downloaded_bytes = d.get('downloaded_bytes', 0)
+            total_bytes = d.get('total_bytes', 0)
+            if total_bytes:
+                # Update progress bar
+                progress = float(downloaded_bytes / total_bytes)
+                if progress_bar is not None:
+                    progress_bar.progress(progress)
+                # Update status text
+                if progress_text is not None:
+                    progress_text.text(f'Downloading... {progress * 100:.1f}% ({downloaded_bytes/1024/1024:.1f}MB / {total_bytes/1024/1024:.1f}MB)')
+        elif d['status'] == 'finished':
+            if progress_text is not None:
+                progress_text.text('Download finished. Processing video...')
+
     ydl_opts = {
-        # Select format based on height and include audio
         'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]',
         'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
         'merge_output_format': format_option,
@@ -66,7 +84,8 @@ def download_video(url, temp_dir, height, format_option='mp4'):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': format_option,
         }],
-        'ffmpeg_location': None,  # Let it find FFmpeg in system PATH
+        'ffmpeg_location': None,
+        'progress_hooks': [progress_hook],  # Add progress hook
     }
     
     try:
@@ -75,6 +94,10 @@ def download_video(url, temp_dir, height, format_option='mp4'):
             filename = ydl.prepare_filename(info)
             base_filename = os.path.splitext(filename)[0]
             actual_filename = f"{base_filename}.{format_option}"
+            if progress_bar is not None:
+                progress_bar.progress(1.0)
+            if progress_text is not None:
+                progress_text.text('Download and processing complete!')
             return actual_filename if os.path.exists(actual_filename) else filename
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
@@ -138,19 +161,23 @@ def main():
                 )
                 
                 if st.button('Download Video'):
-                    with st.spinner('Downloading video... Please wait...'):
-                        downloaded_file = download_video(
-                            video_url,
-                            st.session_state.temp_dir,
-                            selected_format['height'],
-                            format_option
-                        )
-                        
-                        if downloaded_file and os.path.exists(downloaded_file):
-                            st.session_state.downloaded_file = downloaded_file
-                            st.success('Download completed!')
-                        else:
-                            st.error('Download failed. Please try again.')
+                    progress_bar = st.progress(0)
+                    progress_text = st.empty()
+                    
+                    downloaded_file = download_video(
+                        video_url,
+                        st.session_state.temp_dir,
+                        selected_format['height'],
+                        format_option,
+                        progress_bar,
+                        progress_text
+                    )
+                    
+                    if downloaded_file and os.path.exists(downloaded_file):
+                        st.session_state.downloaded_file = downloaded_file
+                        st.success('Download completed!')
+                    else:
+                        st.error('Download failed. Please try again.')
 
     # Show download link if file is ready
     if st.session_state.downloaded_file and os.path.exists(st.session_state.downloaded_file):
@@ -162,7 +189,7 @@ def main():
         
         with open(st.session_state.downloaded_file, 'rb') as file:
             st.download_button(
-                label="Download Video",
+                label="Save on Device",
                 data=file,
                 file_name=os.path.basename(st.session_state.downloaded_file),
                 mime='video/mp4'
